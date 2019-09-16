@@ -2,7 +2,6 @@ package gabtms
 
 import (
 	"encoding/json"
-	"log"
 	"net/url"
 	"time"
 
@@ -11,7 +10,7 @@ import (
 
 type Client struct {
 	URL     url.URL
-	Channel json.RawMessage
+	Channel []byte
 
 	OnConnectEvent   interface{}
 	OnSubscribeEvent interface{}
@@ -24,9 +23,9 @@ type Client struct {
 	conn *websocket.Conn
 }
 
-type Option func(wsc *Client)
+type Option func(wsc *Client) error
 
-func NewClient(url url.URL, channel json.RawMessage, options ...Option) *Client {
+func NewClient(url url.URL, channel []byte, options ...Option) (*Client, error) {
 	client := &Client{
 		URL:               url,
 		Channel:           channel,
@@ -37,16 +36,19 @@ func NewClient(url url.URL, channel json.RawMessage, options ...Option) *Client 
 		ReconnectInterval: 10 * time.Second,
 	}
 	for _, option := range options {
-		option(client)
+		err := option(client)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return client
+	return client, nil
 }
 
 func (c *Client) Connect() error {
 	var err error
 	c.conn, _, err = websocket.DefaultDialer.Dial(c.URL.String(), nil)
 	if err != nil {
-		log.Fatal("dial:", err)
+		return err
 	}
 
 	if c.OnConnectEvent != nil {
@@ -62,7 +64,7 @@ func (c *Client) Connect() error {
 func (c *Client) Subscribe() (chan json.RawMessage, chan error, error) {
 	err := c.conn.WriteMessage(websocket.TextMessage, c.Channel)
 	if err != nil {
-		log.Fatal("failed write message:", err)
+		return nil, nil, err
 	}
 
 	if c.OnSubscribeEvent != nil {
@@ -81,7 +83,7 @@ func (c *Client) Subscribe() (chan json.RawMessage, chan error, error) {
 		for {
 			_, message, err := c.conn.ReadMessage()
 			if err != nil {
-				log.Println("read:", err)
+				chErr <- err
 				return
 			}
 			ch <- message
@@ -94,12 +96,10 @@ func (c *Client) Subscribe() (chan json.RawMessage, chan error, error) {
 func (c *Client) KeepAlive(errChan chan error) {
 	ticker := time.NewTicker(c.PingPeriod)
 	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			if err := c.Ping(); err != nil {
-				errChan <- err
-			}
+
+	for range ticker.C {
+		if err := c.Ping(); err != nil {
+			errChan <- err
 		}
 	}
 }
@@ -107,7 +107,7 @@ func (c *Client) KeepAlive(errChan chan error) {
 func (c *Client) Ping() error {
 	err := c.conn.SetWriteDeadline(time.Now().Add(c.PingDeadline))
 	if err != nil {
-		log.Fatal("failed write deadline:", err)
+		return err
 	}
 	return c.conn.WriteMessage(websocket.PingMessage, []byte{})
 }

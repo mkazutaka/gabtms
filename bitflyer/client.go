@@ -11,8 +11,12 @@ func Subscribe(channelName string) (chan json.RawMessage, chan error, error) {
 	u := NewURL()
 	c := NewChannel(channelName)
 
-	client := gabtms.NewClient(u, c)
-	err := client.Connect()
+	client, err := gabtms.NewClient(u, c)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	err = client.Connect()
 	if err != nil {
 		log.Fatal(err)
 	}
