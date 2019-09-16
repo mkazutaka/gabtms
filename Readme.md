@@ -2,6 +2,8 @@
 gather BTC Websocket.
 This is library for aggregating trade data from some exchanges through web socket
 
+![demo](https://user-images.githubusercontent.com/4601360/64967843-282db680-d8dc-11e9-8454-301f19e54f8c.gif)
+
 # Install
 ```
 $ go get github.com/mkazutaka/gabtms
