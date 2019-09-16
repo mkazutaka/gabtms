@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/url"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -15,6 +16,11 @@ type Client struct {
 	OnConnectEvent   interface{}
 	OnSubscribeEvent interface{}
 
+	PingDeadline time.Duration
+	PingPeriod   time.Duration
+
+	ReconnectInterval time.Duration
+
 	conn *websocket.Conn
 }
 
@@ -22,10 +28,13 @@ type Option func(wsc *Client)
 
 func NewClient(url url.URL, channel json.RawMessage, options ...Option) *Client {
 	client := &Client{
-		URL:              url,
-		Channel:          channel,
-		OnConnectEvent:   nil,
-		OnSubscribeEvent: nil,
+		URL:               url,
+		Channel:           channel,
+		OnConnectEvent:    nil,
+		OnSubscribeEvent:  nil,
+		PingPeriod:        5 * time.Second,
+		PingDeadline:      10 * time.Second,
+		ReconnectInterval: 10 * time.Second,
 	}
 	for _, option := range options {
 		option(client)
@@ -50,7 +59,7 @@ func (c *Client) Connect() error {
 	return nil
 }
 
-func (c *Client) Subscribe() (chan json.RawMessage, error) {
+func (c *Client) Subscribe() (chan json.RawMessage, chan error, error) {
 	err := c.conn.WriteMessage(websocket.TextMessage, c.Channel)
 	if err != nil {
 		log.Fatal("failed write message:", err)
@@ -59,9 +68,12 @@ func (c *Client) Subscribe() (chan json.RawMessage, error) {
 	if c.OnSubscribeEvent != nil {
 		err = c.conn.ReadJSON(c.OnConnectEvent)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
+
+	chErr := make(chan error)
+	go c.KeepAlive(chErr)
 
 	ch := make(chan json.RawMessage)
 	go func() {
@@ -76,5 +88,26 @@ func (c *Client) Subscribe() (chan json.RawMessage, error) {
 		}
 	}()
 
-	return ch, nil
+	return ch, chErr, nil
+}
+
+func (c *Client) KeepAlive(errChan chan error) {
+	ticker := time.NewTicker(c.PingPeriod)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if err := c.Ping(); err != nil {
+				errChan <- err
+			}
+		}
+	}
+}
+
+func (c *Client) Ping() error {
+	err := c.conn.SetWriteDeadline(time.Now().Add(c.PingDeadline))
+	if err != nil {
+		log.Fatal("failed write deadline:", err)
+	}
+	return c.conn.WriteMessage(websocket.PingMessage, []byte{})
 }

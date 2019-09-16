@@ -11,12 +11,24 @@ import (
 )
 
 func main() {
-	liqch := createLiquid()
-	bmch := createBitmex()
-	bfch := createBitflyer()
+	bmCh, _, err := bitmex.Subscribe([]string{bitmex.TopicTrade})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	liqCh, liqChErr, err := liquid.Subscribe(liquid.ChannelCash, liquid.PairBTCJPY)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	bfCh, _, err := bitflyer.Subscribe(bitflyer.ChannelExecutionsFXBTCJPY)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	for {
 		select {
-		case v := <-bmch:
+		case v := <-bmCh:
 			trade := bitmex.ResponseTrade{}
 			err := json.Unmarshal(v, &trade)
 			if err != nil {
@@ -26,7 +38,7 @@ func main() {
 				m := v.Generalize()
 				log.Printf("bitmex: %+v", m)
 			}
-		case v := <-bfch:
+		case v := <-bfCh:
 			trade := bitflyer.ResponseExecutions{}
 			err := json.Unmarshal(v, &trade)
 			if err != nil {
@@ -36,7 +48,7 @@ func main() {
 				m := v.Generalize()
 				log.Printf("bitflyer: %+v", m)
 			}
-		case v := <-liqch:
+		case v := <-liqCh:
 			event := &liquid.ResponseExecution{}
 			err := json.Unmarshal(v, &event)
 			if err != nil {
@@ -50,61 +62,8 @@ func main() {
 			}
 
 			log.Printf("liquid: %+v", e.Generalize())
+		case <-liqChErr:
+			log.Fatal(err)
 		}
 	}
-}
-
-func createBitmex() chan json.RawMessage {
-	u := bitmex.NewURL()
-	bmc := bitmex.NewChannel([]string{bitmex.TopicTrade})
-	option := func(c *gabtms.Client) {
-		c.OnConnectEvent = &bitmex.ConnectEvent{}
-	}
-
-	client := gabtms.NewClient(u, bmc, option)
-	err := client.Connect()
-	if err != nil {
-		log.Fatal(err)
-	}
-	ch, err := client.Subscribe()
-	if err != nil {
-		log.Fatal(err)
-	}
-	return ch
-}
-
-func createBitflyer() chan json.RawMessage {
-	u := bitflyer.NewURL()
-	c := bitflyer.NewChannel(bitflyer.ChannelExecutionsFXBTCJPY)
-
-	client := gabtms.NewClient(u, c)
-	err := client.Connect()
-	if err != nil {
-		log.Fatal(err)
-	}
-	ch, err := client.Subscribe()
-	if err != nil {
-		log.Fatal(err)
-	}
-	return ch
-}
-
-func createLiquid() chan json.RawMessage {
-	u := liquid.NewURL()
-	c := liquid.NewChannel(liquid.ChannelCash, liquid.PairBTCJPY)
-	option := func(c *gabtms.Client) {
-		c.OnConnectEvent = &liquid.Event{}
-		c.OnSubscribeEvent = &liquid.Event{}
-	}
-
-	client := gabtms.NewClient(u, c, option)
-	err := client.Connect()
-	if err != nil {
-		log.Fatal(err)
-	}
-	ch, err := client.Subscribe()
-	if err != nil {
-		log.Fatal(err)
-	}
-	return ch
 }
