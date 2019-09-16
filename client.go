@@ -18,8 +18,6 @@ type Client struct {
 	PingDeadline time.Duration
 	PingPeriod   time.Duration
 
-	ReconnectInterval time.Duration
-
 	conn *websocket.Conn
 }
 
@@ -33,7 +31,6 @@ func NewClient(url url.URL, channel []byte, options ...Option) (*Client, error) 
 		OnSubscribeEvent:  nil,
 		PingPeriod:        5 * time.Second,
 		PingDeadline:      10 * time.Second,
-		ReconnectInterval: 10 * time.Second,
 	}
 	for _, option := range options {
 		err := option(client)
