@@ -108,3 +108,7 @@ func (c *Client) Ping() error {
 	}
 	return c.conn.WriteMessage(websocket.PingMessage, []byte{})
 }
+
+func (c *Client) Disconnect() error {
+	return c.conn.Close()
+}
